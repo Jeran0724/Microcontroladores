@@ -12,20 +12,17 @@
 #include "mqtt_client.h"
 #include "esp_log.h"
 
-// ── ADC ───────────────────────────────────────────────────────────
 #define ADC_CHANNEL     ADC1_CHANNEL_6
 #define ADC_ATTEN       ADC_ATTEN_DB_12
 #define ADC_WIDTH       ADC_WIDTH_BIT_12
 #define SAMPLES         1000
 #define V_REF_MV        1100
 
-// ── MQTT / WiFi ───────────────────────────────────────────────────
 #define WIFI_SSID       "Campus_ITLA"
 #define MQTT_BROKER     "mqtt://broker.hivemq.com"
 #define MQTT_PORT       1883
 #define MQTT_TOPIC      "itla/mecatronica/Jeran"
 
-// ── Bit de evento: WiFi conectado ─────────────────────────────────
 #define WIFI_CONNECTED_BIT  BIT0
 static EventGroupHandle_t wifi_events;
 
@@ -33,9 +30,6 @@ static esp_mqtt_client_handle_t client;
 static esp_adc_cal_characteristics_t adc_chars;
 static const char *TAG = "VOLTIMETRO";
 
-// ══════════════════════════════════════════════════════════════════
-//  Handler de eventos WiFi — setea el bit cuando hay IP
-// ══════════════════════════════════════════════════════════════════
 static void wifi_event_handler(void *arg, esp_event_base_t base,
                                int32_t event_id, void *data)
 {
@@ -49,9 +43,6 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
     }
 }
 
-// ══════════════════════════════════════════════════════════════════
-//  Red: WiFi + MQTT (espera IP antes de iniciar MQTT)
-// ══════════════════════════════════════════════════════════════════
 static void network_init(void)
 {
     wifi_events = xEventGroupCreate();
@@ -61,7 +52,6 @@ static void network_init(void)
     esp_event_loop_create_default();
     esp_netif_create_default_wifi_sta();
 
-    // Registrar handlers de eventos
     esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID,  &wifi_event_handler, NULL);
     esp_event_handler_register(IP_EVENT,   IP_EVENT_STA_GOT_IP, &wifi_event_handler, NULL);
 
@@ -79,13 +69,11 @@ static void network_init(void)
     esp_wifi_start();
     esp_wifi_connect();
 
-    // ── Esperar hasta tener IP antes de continuar ─────────────────
     ESP_LOGI(TAG, "Esperando conexión WiFi...");
     xEventGroupWaitBits(wifi_events, WIFI_CONNECTED_BIT,
                         pdFALSE, pdTRUE, portMAX_DELAY);
     ESP_LOGI(TAG, "WiFi conectado, iniciando MQTT...");
 
-    // ── Ahora sí iniciar MQTT ─────────────────────────────────────
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri  = MQTT_BROKER,
         .broker.address.port = MQTT_PORT,
@@ -93,13 +81,9 @@ static void network_init(void)
     client = esp_mqtt_client_init(&mqtt_cfg);
     esp_mqtt_client_start(client);
 
-    // Pequeña espera para que MQTT establezca la conexión
     vTaskDelay(pdMS_TO_TICKS(2000));
 }
 
-// ══════════════════════════════════════════════════════════════════
-//  ADC: calibración
-// ══════════════════════════════════════════════════════════════════
 static void adc_init(void)
 {
     adc1_config_width(ADC_WIDTH);
@@ -107,9 +91,6 @@ static void adc_init(void)
     esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN, ADC_WIDTH, V_REF_MV, &adc_chars);
 }
 
-// ══════════════════════════════════════════════════════════════════
-//  Muestreo: calcula offset DC y Vrms
-// ══════════════════════════════════════════════════════════════════
 static float medir_vrms(float *out_offset)
 {
     float offset = 0.0f;
@@ -133,9 +114,6 @@ static float medir_vrms(float *out_offset)
     return sqrtf(sum / SAMPLES);
 }
 
-// ══════════════════════════════════════════════════════════════════
-//  MQTT: publica en topic de Yadiel
-// ══════════════════════════════════════════════════════════════════
 static void publicar_vrms(float vrms)
 {
     if (client == NULL) return;
@@ -147,9 +125,6 @@ static void publicar_vrms(float vrms)
     ESP_LOGI(TAG, "Publicado en [%s] → %s", MQTT_TOPIC, payload);
 }
 
-// ══════════════════════════════════════════════════════════════════
-//  app_main
-// ══════════════════════════════════════════════════════════════════
 void app_main(void)
 {
     network_init();
